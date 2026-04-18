@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 預約資料：已登入用戶可讀（後台均需要）
+    // 寫入一律透過 API Route（Admin SDK 繞過規則），禁止 client 直接寫入
+    match /bookings/{bookingId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // 設定資料：任何人可讀（前台公開資訊需要），寫入走 Admin SDK
+    match /settings/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 其餘所有資料拒絕存取
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
