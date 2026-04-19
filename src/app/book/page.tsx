@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { SALON_CONFIG, TIME_SLOTS } from "@/config";
+import { Designer, Service, DesignerService } from "@/lib/firestore";
 
 type Step = 1 | 2 | 3 | 4;
 
 type BookingState = {
   serviceId: string;
-  serviceItem: string;
   designerId: string;
   date: string;
   time: string;
@@ -19,7 +19,6 @@ type BookingState = {
 
 const initState: BookingState = {
   serviceId: "",
-  serviceItem: "",
   designerId: "",
   date: "",
   time: "",
@@ -34,18 +33,61 @@ export default function BookPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  // Firestore 動態資料
+  const [dataLoading, setDataLoading] = useState(true);
+  const [services, setServices] = useState<Service[]>([]);
+  const [designers, setDesigners] = useState<Designer[]>([]);
+  // 選定設計師後，其服務定價矩陣
+  const [designerServices, setDesignerServices] = useState<DesignerService[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const { db } = await import("@/lib/firebase");
+      const { getDesigners, getServices } = await import("@/lib/firestore");
+      const [allDesigners, allServices] = await Promise.all([
+        getDesigners(db),
+        getServices(db),
+      ]);
+      setDesigners(allDesigners.filter(d => d.active));
+      setServices(allServices.filter(s => s.active));
+      setDataLoading(false);
+    })();
+  }, []);
+
+  // 當設計師改變時，載入其定價矩陣（取得 duration_min）
+  useEffect(() => {
+    if (!form.designerId) {
+      setDesignerServices([]);
+      return;
+    }
+    (async () => {
+      const { db } = await import("@/lib/firebase");
+      const { getDesignerServices } = await import("@/lib/firestore");
+      const ds = await getDesignerServices(db, form.designerId);
+      setDesignerServices(ds);
+    })();
+  }, [form.designerId]);
+
   function set<K extends keyof BookingState>(key: K, val: string) {
     setForm((prev) => ({ ...prev, [key]: val }));
   }
 
-  const currentService = SALON_CONFIG.services.find((s) => s.id === form.serviceId);
-  const currentDesigner = SALON_CONFIG.designers.find((d) => d.id === form.designerId);
+  const selectedService = services.find(s => s.id === form.serviceId);
+  const selectedDesigner = designers.find(d => d.id === form.designerId);
+
+  // 取得本次服務的時長：優先用定價矩陣，否則 fallback 60 分鐘
+  function getDurationMin(): number {
+    if (form.designerId && form.serviceId) {
+      const ds = designerServices.find(d => d.id === form.serviceId);
+      if (ds) return ds.duration_min;
+    }
+    return 60;
+  }
 
   async function handleSubmit() {
     setSubmitting(true);
     setError("");
     try {
-      // 動態 import Firebase（避免 SSR build 時初始化失敗）
       const { auth } = await import("@/lib/firebase");
       const { signInAnonymously } = await import("firebase/auth");
       const userCred = await signInAnonymously(auth);
@@ -58,16 +100,17 @@ export default function BookPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          serviceId: form.serviceId,
-          serviceName: currentService?.name ?? "",
-          serviceItem: form.serviceItem,
-          designerId: form.designerId,
-          designerName: currentDesigner?.name ?? "未指定",
-          date: form.date,
-          time: form.time,
-          name: form.name,
-          phone: form.phone,
-          notes: form.notes,
+          service_id:     form.serviceId,
+          service_name:   selectedService?.name ?? "",
+          service_item:   "",
+          designer_id:    form.designerId,
+          designer_name:  selectedDesigner?.name ?? "不指定",
+          date:           form.date,
+          start_time:     form.time,
+          duration_min:   getDurationMin(),
+          customer_name:  form.name,
+          customer_phone: form.phone,
+          notes:          form.notes,
         }),
       });
 
@@ -142,63 +185,47 @@ export default function BookPage() {
             <h1 className="text-2xl font-light mb-2">選擇服務項目</h1>
             <p className="text-sm text-[#1D1D1F]/40 mb-8 font-light">請先選擇您想要的服務類別。</p>
 
-            <div className="space-y-3 mb-8">
-              {SALON_CONFIG.services.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => { set("serviceId", s.id); set("serviceItem", ""); }}
-                  className={`w-full text-left border p-5 transition-all
-                    ${form.serviceId === s.id
-                      ? "border-[#1D1D1F] bg-[#F5F5F7]"
-                      : "border-[#D2D2D7] hover:border-[#1D1D1F]/40"
-                    }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-[10px] uppercase tracking-widest text-[#1D1D1F]/35 mb-1">
-                        {s.tag} · {s.duration}
-                      </p>
-                      <p className="font-medium text-[#1D1D1F]">{s.name}</p>
+            {dataLoading ? (
+              <p className="text-xs text-[#1D1D1F]/30 py-8 text-center">載入中...</p>
+            ) : services.length === 0 ? (
+              <p className="text-xs text-[#1D1D1F]/30 py-8 text-center">目前尚無可預約的服務項目</p>
+            ) : (
+              <div className="space-y-3 mb-8">
+                {services.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => set("serviceId", s.id)}
+                    className={`w-full text-left border p-5 transition-all
+                      ${form.serviceId === s.id
+                        ? "border-[#1D1D1F] bg-[#F5F5F7]"
+                        : "border-[#D2D2D7] hover:border-[#1D1D1F]/40"
+                      }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-[#1D1D1F]/35 mb-1">
+                          {CAT_LABEL[s.category]}
+                        </p>
+                        <p className="font-medium text-[#1D1D1F]">{s.name}</p>
+                        {s.description && (
+                          <p className="text-xs text-[#1D1D1F]/40 mt-0.5">{s.description}</p>
+                        )}
+                      </div>
+                      <div
+                        className={`w-4 h-4 rounded-full border mt-1 transition-all shrink-0
+                          ${form.serviceId === s.id
+                            ? "border-[#1D1D1F] bg-[#1D1D1F]"
+                            : "border-[#D2D2D7]"
+                          }`}
+                      />
                     </div>
-                    <div
-                      className={`w-4 h-4 rounded-full border mt-1 transition-all
-                        ${form.serviceId === s.id
-                          ? "border-[#1D1D1F] bg-[#1D1D1F]"
-                          : "border-[#D2D2D7]"
-                        }`}
-                    />
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {currentService && (
-              <div className="mb-8">
-                <p className="text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 mb-3">
-                  選擇細項（選填）
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {currentService.items.map((item) => (
-                    <button
-                      key={item.name}
-                      onClick={() =>
-                        set("serviceItem", form.serviceItem === item.name ? "" : item.name)
-                      }
-                      className={`text-xs border px-4 py-2 transition-all tracking-wide
-                        ${form.serviceItem === item.name
-                          ? "border-[#1D1D1F] bg-[#1D1D1F] text-white"
-                          : "border-[#D2D2D7] hover:border-[#1D1D1F]/40"
-                        }`}
-                    >
-                      {item.name}
-                    </button>
-                  ))}
-                </div>
+                  </button>
+                ))}
               </div>
             )}
 
             <button
-              disabled={!form.serviceId}
+              disabled={!form.serviceId || dataLoading}
               onClick={() => setStep(2)}
               className="w-full bg-[#1D1D1F] text-white text-[11px] tracking-[0.3em] uppercase py-4 hover:bg-black transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
@@ -218,7 +245,7 @@ export default function BookPage() {
             <div className="mb-8">
               <p className="text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 mb-3">設計師</p>
               <div className="grid grid-cols-3 gap-3">
-                {SALON_CONFIG.designers.map((d) => (
+                {designers.map((d) => (
                   <button
                     key={d.id}
                     onClick={() => set("designerId", d.id)}
@@ -228,12 +255,18 @@ export default function BookPage() {
                         : "border-[#D2D2D7] hover:border-[#1D1D1F]/40"
                       }`}
                   >
-                    <div className="w-12 h-12 mx-auto mb-2 overflow-hidden grayscale">
-                      <img
-                        src={d.photo}
-                        alt={d.name}
-                        className="w-full h-full object-cover"
-                      />
+                    <div className="w-12 h-12 mx-auto mb-2 overflow-hidden grayscale bg-[#F5F5F7]">
+                      {d.photo_url ? (
+                        <img
+                          src={d.photo_url}
+                          alt={d.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[#1D1D1F]/20 text-lg">
+                          {d.name[0]}
+                        </div>
+                      )}
                     </div>
                     <p className="text-xs font-bold">{d.name}</p>
                     <p className="text-[10px] text-[#1D1D1F]/40">{d.title}</p>
@@ -346,11 +379,8 @@ export default function BookPage() {
             {/* 摘要 */}
             <div className="bg-[#F5F5F7] border border-[#D2D2D7] p-5 mb-6 space-y-2">
               <p className="text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 mb-3">預約摘要</p>
-              <Row label="服務">
-                {currentService?.name}
-                {form.serviceItem ? ` · ${form.serviceItem}` : ""}
-              </Row>
-              <Row label="設計師">{currentDesigner?.name ?? "不指定"}</Row>
+              <Row label="服務">{selectedService?.name ?? "—"}</Row>
+              <Row label="設計師">{selectedDesigner?.name ?? "不指定"}</Row>
               <Row label="日期">{form.date}</Row>
               <Row label="時間">{form.time}</Row>
             </div>
@@ -397,11 +427,8 @@ export default function BookPage() {
             <div className="bg-[#F5F5F7] border border-[#D2D2D7] p-6 text-left mb-10 space-y-2">
               <p className="text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 mb-3">您的預約內容</p>
               <Row label="姓名">{form.name}</Row>
-              <Row label="服務">
-                {currentService?.name}
-                {form.serviceItem ? ` · ${form.serviceItem}` : ""}
-              </Row>
-              <Row label="設計師">{currentDesigner?.name ?? "不指定"}</Row>
+              <Row label="服務">{selectedService?.name ?? "—"}</Row>
+              <Row label="設計師">{selectedDesigner?.name ?? "不指定"}</Row>
               <Row label="時間">{form.date} {form.time}</Row>
             </div>
 
@@ -417,6 +444,13 @@ export default function BookPage() {
     </main>
   );
 }
+
+const CAT_LABEL: Record<string, string> = {
+  haircut:   "剪裁",
+  color:     "染燙",
+  treatment: "護理",
+  other:     "其他",
+};
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (

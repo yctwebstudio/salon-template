@@ -5,18 +5,19 @@ import { adminDb, adminAuth } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 
-// ── 預約 Schema ──────────────────────────────────────────
+// ── 預約 Schema（對齊 Booking interface）────────────────────
 const bookingSchema = z.object({
-  serviceId:    z.string().min(1),
-  serviceName:  z.string().min(1),
-  serviceItem:  z.string().optional().default(""),
-  designerId:   z.string().optional().default(""),
-  designerName: z.string().optional().default("不指定"),
-  date:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  time:         z.string().min(1),
-  name:         z.string().min(2),
-  phone:        z.string().min(6),
-  notes:        z.string().optional().default(""),
+  service_id:      z.string().min(1),
+  service_name:    z.string().min(1),
+  service_item:    z.string().optional().default(""),
+  designer_id:     z.string().optional().default(""),
+  designer_name:   z.string().optional().default("不指定"),
+  date:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  start_time:      z.string().min(1),                      // "14:00"
+  duration_min:    z.number().int().positive(),             // 60
+  customer_name:   z.string().min(2),
+  customer_phone:  z.string().min(6),
+  notes:           z.string().optional().default(""),
 });
 
 // ── POST — 新增預約 ──────────────────────────────────────
@@ -40,11 +41,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "日期不得早於今天" }, { status: 400 });
     }
 
+    // 計算 end_time（start_time + duration_min）
+    const [h, m] = data.start_time.split(":").map(Number);
+    const endMin = h * 60 + m + data.duration_min;
+    const end_time = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+
     // 寫入 Firestore
     await adminDb.collection("bookings").add({
       ...data,
+      end_time,
       status: "pending",   // pending | confirmed | cancelled
-      createdAt: FieldValue.serverTimestamp(),
+      created_at: FieldValue.serverTimestamp(),
     });
 
     return NextResponse.json({ ok: true }, { status: 201 });
@@ -74,7 +81,7 @@ export async function GET(req: NextRequest) {
 
     const snap = await adminDb
       .collection("bookings")
-      .orderBy("createdAt", "desc")
+      .orderBy("created_at", "desc")
       .limit(200)
       .get();
 

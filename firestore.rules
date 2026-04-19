@@ -9,7 +9,31 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // 設定資料：任何人可讀（前台公開資訊需要），寫入走 Admin SDK
+    // 設計師：公開讀（前台預約頁顯示），寫入走 Admin SDK
+    match /designers/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 設計師定價矩陣（subcollection）：公開讀
+    match /designers/{id}/services/{serviceId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 服務類別：公開讀（前台預約頁需要）
+    match /services/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 排班設定：公開讀（未來時段查詢需要）
+    match /schedules/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 設定資料：公開讀（前台可能需要緩衝時間等參數）
     match /settings/{document=**} {
       allow read: if true;
       allow write: if false;
