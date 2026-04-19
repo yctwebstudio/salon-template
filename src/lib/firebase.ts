@@ -14,3 +14,8 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+/** 讓頁面動態 import 時可解構取得 db / auth */
+export function getFirebaseApp() {
+  return { db, auth, app };
+}

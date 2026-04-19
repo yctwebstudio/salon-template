@@ -3,18 +3,27 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Designer, Service, DesignerService,
+  type Designer, type Service, type DesignerService,
   getDesigner, getServices, getDesignerServices,
   setDesignerService, deleteDesignerService,
 } from "@/lib/firestore";
 
 type Row = {
   service: Service;
-  ds: DesignerService | null;   // null = 未設定
+  ds: DesignerService | null;
   editing: boolean;
-  price: string;
+  price_min: string;
+  price_max: string;
   duration: string;
   active: boolean;
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  haircut:   "剪裁",
+  color:     "染色",
+  perm:      "燙髮",
+  treatment: "護理",
+  other:     "其他",
 };
 
 export default function DesignerServicesPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,14 +35,13 @@ export default function DesignerServicesPage({ params }: { params: Promise<{ id:
 
   useEffect(() => {
     (async () => {
-      const { db } = await import("@/lib/firebase");
+      const { db } = await import("@/lib/firebase").then(m => m.getFirebaseApp());
       const [des, services, dsRaw] = await Promise.all([
         getDesigner(db, designerId),
         getServices(db),
         getDesignerServices(db, designerId),
       ]);
       setDesigner(des);
-
       const dsMap = Object.fromEntries(dsRaw.map(d => [d.id, d]));
       setRows(services.filter(s => s.active).map(s => {
         const ds = dsMap[s.id] ?? null;
@@ -41,49 +49,51 @@ export default function DesignerServicesPage({ params }: { params: Promise<{ id:
           service: s,
           ds,
           editing: false,
-          price:    ds ? String(ds.price) : "",
-          duration: ds ? String(ds.duration_min) : "",
-          active:   ds ? ds.active : true,
+          price_min: ds ? String(ds.price_min) : "",
+          price_max: ds ? String(ds.price_max) : "",
+          duration:  ds ? String(ds.duration_min) : String(s.base_duration_min || ""),
+          active:    ds ? ds.active : true,
         };
       }));
       setLoading(false);
     })();
   }, [designerId]);
 
-  function startEdit(serviceId: string) {
-    setRows(prev => prev.map(r =>
-      r.service.id === serviceId ? { ...r, editing: true } : r
-    ));
-  }
+  const startEdit = (sid: string) =>
+    setRows(p => p.map(r => r.service.id === sid ? { ...r, editing: true } : r));
 
-  function cancelEdit(serviceId: string) {
-    setRows(prev => prev.map(r => {
-      if (r.service.id !== serviceId) return r;
+  const cancelEdit = (sid: string) =>
+    setRows(p => p.map(r => {
+      if (r.service.id !== sid) return r;
       return {
-        ...r,
-        editing: false,
-        price:    r.ds ? String(r.ds.price) : "",
-        duration: r.ds ? String(r.ds.duration_min) : "",
+        ...r, editing: false,
+        price_min: r.ds ? String(r.ds.price_min) : "",
+        price_max: r.ds ? String(r.ds.price_max) : "",
+        duration:  r.ds ? String(r.ds.duration_min) : String(r.service.base_duration_min || ""),
       };
     }));
-  }
+
+  const updateRow = (sid: string, field: keyof Row, val: string | boolean) =>
+    setRows(p => p.map(r => r.service.id === sid ? { ...r, [field]: val } : r));
 
   async function saveRow(r: Row) {
-    const price = Number(r.price);
-    const duration = Number(r.duration);
-    if (!price || !duration) return;
+    const pMin = Number(r.price_min);
+    const pMax = Number(r.price_max) || pMin;
+    const dur  = Number(r.duration);
+    if (!pMin || !dur) return;
 
     setSaving(r.service.id);
     try {
-      const { db } = await import("@/lib/firebase");
+      const { db } = await import("@/lib/firebase").then(m => m.getFirebaseApp());
       const data: Omit<DesignerService, "id"> = {
         service_name: r.service.name,
-        price,
-        duration_min: duration,
+        price_min: pMin,
+        price_max: pMax,
+        duration_min: dur,
         active: r.active,
       };
       await setDesignerService(db, designerId, r.service.id, data);
-      setRows(prev => prev.map(x =>
+      setRows(p => p.map(x =>
         x.service.id === r.service.id
           ? { ...x, editing: false, ds: { id: r.service.id, ...data } }
           : x
@@ -93,114 +103,102 @@ export default function DesignerServicesPage({ params }: { params: Promise<{ id:
     }
   }
 
-  async function removeRow(serviceId: string) {
-    const { db } = await import("@/lib/firebase");
-    await deleteDesignerService(db, designerId, serviceId);
-    setRows(prev => prev.map(r =>
-      r.service.id === serviceId
-        ? { ...r, ds: null, editing: false, price: "", duration: "" }
+  async function removeRow(sid: string) {
+    const { db } = await import("@/lib/firebase").then(m => m.getFirebaseApp());
+    await deleteDesignerService(db, designerId, sid);
+    setRows(p => p.map(r =>
+      r.service.id === sid
+        ? { ...r, ds: null, editing: false, price_min: "", price_max: "", duration: String(r.service.base_duration_min || "") }
         : r
     ));
   }
-
-  const CATEGORY_LABEL: Record<string, string> = {
-    haircut:   "剪裁",
-    color:     "染燙",
-    treatment: "護理",
-    other:     "其他",
-  };
 
   if (loading) return <div className="p-8 text-xs text-[#1D1D1F]/30">載入中...</div>;
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center gap-4 mb-8">
+        <Link href={`/dashboard/designers/${designerId}`} className="text-xs text-[#1D1D1F]/40 hover:text-[#1D1D1F] transition-colors">
+          ← 返回設計師
+        </Link>
         <div>
-          <Link href="/dashboard/designers" className="text-[10px] text-[#1D1D1F]/30 uppercase tracking-widest hover:text-[#1D1D1F] transition-colors">
-            ← 設計師列表
-          </Link>
-          <h1 className="text-xl font-medium text-[#1D1D1F] mt-2">
-            {designer?.name} — 定價矩陣
-          </h1>
-          <p className="text-xs text-[#1D1D1F]/40">設定各服務的個人定價與執行時長（分鐘）</p>
+          <h1 className="text-xl font-medium text-[#1D1D1F]">{designer?.name} — 定價矩陣</h1>
+          <p className="text-xs text-[#1D1D1F]/40">設定各服務的個人定價區間與執行時長</p>
         </div>
       </div>
 
-      {/* 定價表格 */}
       <div className="bg-white border border-[#D2D2D7]">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[#D2D2D7]">
               <th className="text-left px-4 py-3 text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 font-normal">服務項目</th>
-              <th className="text-left px-4 py-3 text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 font-normal w-32">價格（NT$）</th>
-              <th className="text-left px-4 py-3 text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 font-normal w-28">時長（分鐘）</th>
-              <th className="text-left px-4 py-3 text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 font-normal w-20">啟用</th>
+              <th className="text-left px-4 py-3 text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 font-normal w-28">最低價（NT$）</th>
+              <th className="text-left px-4 py-3 text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 font-normal w-28">最高價（NT$）</th>
+              <th className="text-left px-4 py-3 text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 font-normal w-24">時長（分）</th>
+              <th className="text-left px-4 py-3 text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 font-normal w-16">啟用</th>
               <th className="w-36" />
             </tr>
           </thead>
           <tbody>
             {rows.map(r => (
               <tr key={r.service.id} className="border-t border-[#F0F0F0]">
-                {/* 服務名稱 */}
                 <td className="px-4 py-3">
-                  <div>
-                    <span className="font-medium text-[#1D1D1F]">{r.service.name}</span>
-                    <span className="ml-2 text-[10px] text-[#1D1D1F]/30 uppercase tracking-wider">
-                      {CATEGORY_LABEL[r.service.category]}
-                    </span>
-                  </div>
+                  <span className="font-medium text-[#1D1D1F]">{r.service.name}</span>
+                  <span className="ml-2 text-[10px] text-[#1D1D1F]/30 uppercase tracking-wider">
+                    {CATEGORY_LABEL[r.service.category]}
+                  </span>
                   {r.service.description && (
                     <p className="text-xs text-[#1D1D1F]/30 mt-0.5">{r.service.description}</p>
                   )}
                 </td>
 
-                {/* 價格 */}
                 <td className="px-4 py-3">
                   {r.editing ? (
-                    <input type="number" value={r.price} min={0}
-                      onChange={e => setRows(prev => prev.map(x =>
-                        x.service.id === r.service.id ? { ...x, price: e.target.value } : x
-                      ))}
-                      className="w-full border border-[#D2D2D7] px-2 py-1.5 text-sm focus:outline-none focus:border-[#1D1D1F]"
-                    />
+                    <input type="number" value={r.price_min} min={0} placeholder="例：2500"
+                      onChange={e => updateRow(r.service.id, "price_min", e.target.value)}
+                      className="w-full border border-[#D2D2D7] px-2 py-1.5 text-sm focus:outline-none focus:border-[#1D1D1F]" />
                   ) : (
                     <span className={r.ds ? "text-[#1D1D1F]" : "text-[#1D1D1F]/20"}>
-                      {r.ds ? `NT$ ${r.ds.price.toLocaleString()}` : "—"}
+                      {r.ds ? `${r.ds.price_min.toLocaleString()}` : "—"}
                     </span>
                   )}
                 </td>
 
-                {/* 時長 */}
                 <td className="px-4 py-3">
                   {r.editing ? (
-                    <input type="number" value={r.duration} min={0} step={5}
-                      onChange={e => setRows(prev => prev.map(x =>
-                        x.service.id === r.service.id ? { ...x, duration: e.target.value } : x
-                      ))}
-                      className="w-full border border-[#D2D2D7] px-2 py-1.5 text-sm focus:outline-none focus:border-[#1D1D1F]"
-                    />
+                    <input type="number" value={r.price_max} min={0} placeholder="例：4500"
+                      onChange={e => updateRow(r.service.id, "price_max", e.target.value)}
+                      className="w-full border border-[#D2D2D7] px-2 py-1.5 text-sm focus:outline-none focus:border-[#1D1D1F]" />
                   ) : (
                     <span className={r.ds ? "text-[#1D1D1F]" : "text-[#1D1D1F]/20"}>
-                      {r.ds ? `${r.ds.duration_min} 分` : "—"}
+                      {r.ds ? (r.ds.price_max > r.ds.price_min ? `${r.ds.price_max.toLocaleString()}` : "同上") : "—"}
                     </span>
                   )}
                 </td>
 
-                {/* 啟用 toggle */}
                 <td className="px-4 py-3">
-                  {r.ds && (
-                    <button onClick={() => setRows(prev => prev.map(x =>
-                        x.service.id === r.service.id ? { ...x, active: !x.active } : x
-                      ))}
-                      className={`w-8 h-4 rounded-full relative transition-colors
-                        ${r.active ? "bg-[#1D1D1F]" : "bg-[#D2D2D7]"}`}>
-                      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform
-                        ${r.active ? "left-4" : "left-0.5"}`} />
+                  {r.editing ? (
+                    <input type="number" value={r.duration} min={15} step={5}
+                      onChange={e => updateRow(r.service.id, "duration", e.target.value)}
+                      className="w-full border border-[#D2D2D7] px-2 py-1.5 text-sm focus:outline-none focus:border-[#1D1D1F]" />
+                  ) : (
+                    <span className={r.ds ? "text-[#1D1D1F]" : "text-[#1D1D1F]/20"}>
+                      {r.ds ? `${r.ds.duration_min}` : "—"}
+                    </span>
+                  )}
+                </td>
+
+                <td className="px-4 py-3">
+                  {(r.editing || r.ds) && (
+                    <button
+                      onClick={() => updateRow(r.service.id, "active", !r.active)}
+                      className={`w-8 h-4 rounded-full relative transition-colors ${r.active ? "bg-[#1D1D1F]" : "bg-[#D2D2D7]"}`}
+                    >
+                      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${r.active ? "left-4" : "left-0.5"}`} />
                     </button>
                   )}
                 </td>
 
-                {/* 操作 */}
                 <td className="px-4 py-3">
                   <div className="flex gap-2 justify-end">
                     {r.editing ? (
@@ -210,7 +208,7 @@ export default function DesignerServicesPage({ params }: { params: Promise<{ id:
                           取消
                         </button>
                         <button onClick={() => saveRow(r)}
-                          disabled={saving === r.service.id || !r.price || !r.duration}
+                          disabled={saving === r.service.id || !r.price_min || !r.duration}
                           className="text-[10px] px-3 py-1.5 bg-[#1D1D1F] text-white hover:bg-black transition-colors disabled:opacity-30">
                           {saving === r.service.id ? "儲存..." : "儲存"}
                         </button>
@@ -235,7 +233,6 @@ export default function DesignerServicesPage({ params }: { params: Promise<{ id:
             ))}
           </tbody>
         </table>
-
         {rows.length === 0 && (
           <div className="text-center py-12 text-xs text-[#1D1D1F]/30">
             尚無服務項目，請先至「服務項目」頁面新增

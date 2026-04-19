@@ -9,6 +9,7 @@ const NAV = [
   { href: "/dashboard/bookings",  label: "預約管理" },
   { href: "/dashboard/designers", label: "設計師" },
   { href: "/dashboard/services",  label: "服務項目" },
+  { href: "/dashboard/customers", label: "客戶資料" },
   { href: "/dashboard/settings",  label: "系統設定" },
 ];
 

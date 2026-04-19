@@ -7,7 +7,7 @@ import { Designer, getDesigners, saveDesigner } from "@/lib/firestore";
 const LEVEL_LABEL: Record<Designer["level"], string> = {
   junior:    "造型師",
   senior:    "資深造型師",
-  director:  "院長",
+  principal: "首席",
 };
 
 export default function DesignersPage() {
@@ -73,7 +73,7 @@ export default function DesignersPage() {
                   <span className="font-medium text-sm text-[#1D1D1F]">{d.name}</span>
                   <span className="text-[10px] text-[#1D1D1F]/40">{d.title}</span>
                   <span className={`text-[10px] px-2 py-0.5 tracking-wider
-                    ${d.level === "director" ? "bg-[#1D1D1F] text-white" : "bg-[#F5F5F7] text-[#1D1D1F]/50"}`}>
+                    ${d.level === "principal" ? "bg-[#1D1D1F] text-white" : "bg-[#F5F5F7] text-[#1D1D1F]/50"}`}>
                     {LEVEL_LABEL[d.level]}
                   </span>
                 </div>

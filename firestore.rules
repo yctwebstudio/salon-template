@@ -2,44 +2,49 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 預約資料：已登入用戶可讀（後台均需要）
-    // 寫入一律透過 API Route（Admin SDK 繞過規則），禁止 client 直接寫入
-    match /bookings/{bookingId} {
+    // 預約：已登入可讀，寫入走 Admin SDK
+    match /bookings/{id} {
       allow read: if request.auth != null;
       allow write: if false;
     }
 
-    // 設計師：公開讀（前台預約頁顯示），寫入走 Admin SDK
+    // 設計師：公開讀（前台預約頁），寫入走 Admin SDK
     match /designers/{id} {
       allow read: if true;
       allow write: if false;
     }
-
-    // 設計師定價矩陣（subcollection）：公開讀
     match /designers/{id}/services/{serviceId} {
       allow read: if true;
       allow write: if false;
     }
+    match /designers/{id}/schedules/{day} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /designers/{id}/exceptions/{date} {
+      allow read: if true;
+      allow write: if false;
+    }
 
-    // 服務類別：公開讀（前台預約頁需要）
+    // 服務類別：公開讀
     match /services/{id} {
       allow read: if true;
       allow write: if false;
     }
 
-    // 排班設定：公開讀（未來時段查詢需要）
-    match /schedules/{id} {
-      allow read: if true;
-      allow write: if false;
-    }
-
-    // 設定資料：公開讀（前台可能需要緩衝時間等參數）
+    // 設定：公開讀（前台時段計算需要）
     match /settings/{document=**} {
       allow read: if true;
       allow write: if false;
     }
 
-    // 其餘所有資料拒絕存取
+    // 客戶資料庫：僅登入可讀（後台專用）
+    match /customers/{phone} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // 其餘拒絕
     match /{document=**} {
       allow read, write: if false;
     }
