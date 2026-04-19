@@ -17,10 +17,11 @@ type BookingState = {
   name: string;
   phone: string;
   notes: string;
+  email: string;
 };
 
 const initState: BookingState = {
-  serviceId: "", designerId: "", date: "", time: "", name: "", phone: "", notes: "",
+  serviceId: "", designerId: "", date: "", time: "", name: "", phone: "", notes: "", email: "",
 };
 
 const DEFAULT_SETTINGS: BookingSettings = {
@@ -40,6 +41,10 @@ export default function BookPage() {
   const [form, setForm] = useState<BookingState>(initState);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // Google 登入狀態（客戶可選）
+  const [googleUser, setGoogleUser] = useState<{ email: string; displayName: string | null } | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   // Firestore 動態資料
   const [dataLoading, setDataLoading] = useState(true);
@@ -209,6 +214,7 @@ export default function BookPage() {
           duration_min:   getDurationMin(),
           customer_name:  form.name,
           customer_phone: form.phone,
+          customer_email: form.email,
           notes:          form.notes,
         }),
       });
@@ -401,11 +407,58 @@ export default function BookPage() {
                   className="w-full border border-[#D2D2D7] px-4 py-3 text-sm focus:outline-none focus:border-[#1D1D1F] transition-colors placeholder:text-[#1D1D1F]/25" />
               </div>
               <div>
-                <label className="block text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 mb-2">特殊需求（選填）</label>
+                <label className="block text-[10px] uppercase tracking-widests text-[#1D1D1F]/40 mb-2">特殊需求（選填）</label>
                 <textarea placeholder="例：頭髮受損嚴重、第一次染髮、對某些成分過敏..." value={form.notes}
                   onChange={e => set("notes", e.target.value)} rows={3}
                   className="w-full border border-[#D2D2D7] px-4 py-3 text-sm focus:outline-none focus:border-[#1D1D1F] transition-colors resize-none placeholder:text-[#1D1D1F]/25" />
               </div>
+            </div>
+
+            {/* Google 登入（可選）— 用於日後查看預約 */}
+            <div className="border border-dashed border-[#D2D2D7] p-4 mb-2">
+              <p className="text-[10px] uppercase tracking-widest text-[#1D1D1F]/40 mb-3">查看預約記錄（選填）</p>
+              {googleUser ? (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-[#1D1D1F]">{googleUser.displayName ?? googleUser.email}</p>
+                    <p className="text-[10px] text-[#1D1D1F]/40">{googleUser.email}</p>
+                  </div>
+                  <button onClick={async () => {
+                    const { auth } = await import("@/lib/firebase").then(m => m.getFirebaseApp());
+                    const { signOut } = await import("firebase/auth");
+                    await signOut(auth);
+                    setGoogleUser(null);
+                    set("email", "");
+                  }} className="text-[10px] text-[#1D1D1F]/40 hover:text-[#1D1D1F] transition-colors">
+                    切換帳號
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs text-[#1D1D1F]/50 mb-3">使用 Google 登入，方便日後在「我的預約」查看狀態。</p>
+                  <button onClick={async () => {
+                    setGoogleLoading(true);
+                    try {
+                      const { auth } = await import("@/lib/firebase").then(m => m.getFirebaseApp());
+                      const { signInWithPopup, GoogleAuthProvider } = await import("firebase/auth");
+                      const result = await signInWithPopup(auth, new GoogleAuthProvider());
+                      setGoogleUser({ email: result.user.email!, displayName: result.user.displayName });
+                      set("email", result.user.email!);
+                    } catch { /* 使用者取消 */ } finally {
+                      setGoogleLoading(false);
+                    }
+                  }} disabled={googleLoading}
+                    className="flex items-center gap-2 border border-[#D2D2D7] px-4 py-2 text-xs text-[#1D1D1F] hover:bg-[#F5F5F7] transition-colors disabled:opacity-50">
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    {googleLoading ? "登入中..." : "使用 Google 登入"}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 摘要 */}
@@ -459,10 +512,18 @@ export default function BookPage() {
               <Row label="時間">{form.date} {form.time}</Row>
             </div>
 
-            <Link href="/"
-              className="inline-block border border-[#D2D2D7] text-[#1D1D1F] text-[11px] tracking-[0.3em] uppercase px-10 py-3 hover:border-[#1D1D1F] transition-colors">
-              返回首頁
-            </Link>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              {googleUser && (
+                <Link href="/my-bookings"
+                  className="inline-block bg-[#1D1D1F] text-white text-[11px] tracking-[0.3em] uppercase px-10 py-3 hover:bg-black transition-colors">
+                  查看我的預約
+                </Link>
+              )}
+              <Link href="/"
+                className="inline-block border border-[#D2D2D7] text-[#1D1D1F] text-[11px] tracking-[0.3em] uppercase px-10 py-3 hover:border-[#1D1D1F] transition-colors">
+                返回首頁
+              </Link>
+            </div>
           </div>
         )}
       </div>
