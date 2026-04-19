@@ -10,28 +10,28 @@ export default function Hero() {
   const [mid, bottom] = rest.split(" ");  // "HAIR", "CRAFT"
 
   return (
-    <section className="min-h-screen grid grid-cols-1 md:grid-cols-2 pt-14">
+    <section className="min-h-screen grid grid-cols-1 md:grid-cols-2 pt-14 overflow-hidden">
       {/* Left — text */}
-      <div className="flex flex-col justify-end pb-16 pt-24 px-8 md:px-14 lg:px-20">
-        <p className="text-[10px] uppercase tracking-[0.45em] text-[#1D1D1F]/40 mb-10">
+      <div className="flex flex-col justify-end pb-16 pt-24 px-6 sm:px-8 md:px-8 lg:px-12 xl:px-16 2xl:px-20 overflow-hidden">
+        <p className="text-[10px] uppercase tracking-[0.45em] text-[#1D1D1F]/60 mb-10">
           {SALON_CONFIG.location}
         </p>
 
         <div className="mb-10">
-          <h1 className="text-6xl md:text-7xl lg:text-8xl leading-[0.9] font-black text-[#1D1D1F]">
+          <h1 className="text-5xl md:text-6xl xl:text-7xl 2xl:text-8xl leading-[0.9] font-black text-[#1D1D1F]">
             {top}
           </h1>
-          <h1 className="text-6xl md:text-7xl lg:text-8xl leading-[0.9] font-thin text-[#1D1D1F]">
+          <h1 className="text-5xl md:text-6xl xl:text-7xl 2xl:text-8xl leading-[0.9] font-thin text-[#1D1D1F]">
             OF {mid}
           </h1>
-          <h1 className="text-6xl md:text-7xl lg:text-8xl leading-[0.9] font-black text-[#1D1D1F]">
+          <h1 className="text-5xl md:text-6xl xl:text-7xl 2xl:text-8xl leading-[0.9] font-black text-[#1D1D1F]">
             {bottom}
           </h1>
         </div>
 
         <div className="w-12 h-px bg-[#1D1D1F]/30 mb-8" />
 
-        <p className="text-sm text-[#1D1D1F]/50 leading-loose mb-10 max-w-xs font-light">
+        <p className="text-sm text-[#1D1D1F]/60 leading-loose mb-10 max-w-xs font-light">
           {SALON_CONFIG.subTagline}
         </p>
 
@@ -44,13 +44,13 @@ export default function Hero() {
           </Link>
           <a
             href={`tel:${SALON_CONFIG.phone.replace(/-/g, "")}`}
-            className="text-[11px] text-[#1D1D1F]/40 tracking-widest self-center hover:text-[#1D1D1F] transition-colors"
+            className="text-[11px] text-[#1D1D1F]/60 tracking-widest self-center hover:text-[#1D1D1F] transition-colors"
           >
             {SALON_CONFIG.phone}
           </a>
         </div>
 
-        <p className="mt-12 text-[10px] text-[#1D1D1F]/25 tracking-widest uppercase">
+        <p className="mt-12 text-[10px] text-[#1D1D1F]/40 tracking-widest uppercase">
           Scroll to explore ↓
         </p>
       </div>
